@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>CashBook｜进账出账</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f6fa;color:#202124}
+.app{max-width:520px;margin:auto;min-height:100vh;padding-bottom:90px}
+header{background:#111827;color:white;padding:24px 18px 20px;border-radius:0 0 24px 24px}
+.brand{font-size:22px;font-weight:800}.sub{opacity:.7;font-size:12px;margin-top:3px}
+.balance{margin-top:20px;font-size:34px;font-weight:800}.label{font-size:12px;opacity:.7}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}.stat{background:rgba(255,255,255,.1);padding:12px;border-radius:14px}.in{color:#16a34a}.out{color:#dc2626}
+main{padding:16px}.card{background:white;border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 2px 12px rgba(0,0,0,.05)}
+h2{font-size:17px;margin:0 0 12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button,.btn{border:0;border-radius:14px;padding:14px;font-size:15px;font-weight:700;cursor:pointer}.primary{background:#111827;color:#fff}.incomeBtn{background:#dcfce7;color:#166534}.expenseBtn{background:#fee2e2;color:#991b1b}
+input,select{width:100%;padding:13px;border:1px solid #e5e7eb;border-radius:12px;font-size:15px;background:#fff;margin-bottom:10px}
+.actions{display:flex;gap:8px}.actions>*{flex:1}
+.tx{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #eee}.tx:last-child{border-bottom:0}.txname{font-weight:700}.meta{font-size:12px;color:#777;margin-top:3px}.amt{font-weight:800}.empty{text-align:center;color:#999;padding:22px}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #eee;padding:10px max(14px,calc((100vw - 520px)/2 + 14px));display:flex;gap:8px;z-index:5}nav button{flex:1;background:#f3f4f6;color:#374151;padding:11px 5px;font-size:12px}
+nav button.active{background:#111827;color:#fff}
+.hidden{display:none!important}.pill{font-size:11px;padding:4px 7px;border-radius:99px;background:#f3f4f6}
+.delete{color:#999;background:none;padding:5px}
+small{color:#777}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="brand">💰 CashBook</div><div class="sub">进账 · 出账 · 余额管理</div>
+  <div class="label" style="margin-top:18px">当前余额</div>
+  <div class="balance" id="balance">$0.00</div>
+  <div class="stats">
+    <div class="stat"><div class="label">本月进账</div><strong id="monthIn">$0.00</strong></div>
+    <div class="stat"><div class="label">本月出账</div><strong id="monthOut">$0.00</strong></div>
+  </div>
+</header>
+
+<main>
+<section id="home">
+  <div class="card">
+    <h2>快速记录</h2>
+    <div class="grid">
+      <button class="incomeBtn" onclick="showForm('in')">＋ 进账</button>
+      <button class="expenseBtn" onclick="showForm('out')">− 出账</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>最近账目</h2>
+    <div id="recent"></div>
+  </div>
+</section>
+
+<section id="form" class="hidden">
+  <div class="card">
+    <h2 id="formTitle">新增进账</h2>
+    <input id="amount" type="number" inputmode="decimal" step="0.01" placeholder="金额，例如 50">
+    <input id="item" placeholder="项目，例如 Cake / 材料 / Carpool">
+    <select id="category">
+      <option>Sales</option><option>Cake</option><option>Mooncake</option><option>Wanpo Tea</option>
+      <option>Carpool</option><option>Material</option><option>Transport</option><option>Courier</option>
+      <option>Salary</option><option>Other</option>
+    </select>
+    <select id="method"><option>Cash</option><option>PayNow</option><option>Bank</option><option>Other</option></select>
+    <input id="date" type="date">
+    <input id="note" placeholder="备注（可不填）">
+    <div class="actions"><button onclick="cancelForm()">取消</button><button class="primary" onclick="saveTx()">保存</button></div>
+  </div>
+</section>
+
+<section id="transactions" class="hidden">
+  <div class="card">
+    <h2>全部账目</h2>
+    <input id="search" placeholder="🔎 搜索项目 / 分类 / 备注" oninput="render()">
+    <select id="filter" onchange="render()"><option value="all">全部</option><option value="in">只看进账</option><option value="out">只看出账</option></select>
+    <div id="list"></div>
+  </div>
+</section>
+
+<section id="report" class="hidden">
+  <div class="card">
+    <h2>本月报表</h2>
+    <div class="tx"><span>🟢 总进账</span><strong class="in" id="rIn">$0.00</strong></div>
+    <div class="tx"><span>🔴 总出账</span><strong class="out" id="rOut">$0.00</strong></div>
+    <div class="tx"><span>💰 净额</span><strong id="rNet">$0.00</strong></div>
+  </div>
+  <div class="card"><h2>数据</h2><div class="actions"><button onclick="exportCSV()">导出 CSV</button><button onclick="clearAll()">清空全部</button></div></div>
+</section>
+</main>
+
+<nav>
+<button id="n-home" class="active" onclick="tab('home')">🏠<br>首页</button>
+<button id="n-transactions" onclick="tab('transactions')">📋<br>账目</button>
+<button id="n-report" onclick="tab('report')">📊<br>报表</button>
+</nav>
+</div>
+
+<script>
+let txs=JSON.parse(localStorage.getItem('cashbook_txs')||'[]');
+let mode='in';
+const money=n=>'$'+Number(n||0).toFixed(2);
+const today=()=>new Date().toISOString().slice(0,10);
+function save(){localStorage.setItem('cashbook_txs',JSON.stringify(txs))}
+function showForm(m){mode=m;tab('form');document.getElementById('formTitle').textContent=m==='in'?'新增进账':'新增出账';document.getElementById('amount').value='';document.getElementById('item').value='';document.getElementById('note').value='';document.getElementById('date').value=today()}
+function cancelForm(){tab('home')}
+function saveTx(){
+ let amount=parseFloat(document.getElementById('amount').value), item=document.getElementById('item').value.trim();
+ if(!amount||amount<=0||!item){alert('请输入金额和项目');return}
+ txs.unshift({id:Date.now(),type:mode,amount,item,category:category.value,method:method.value,date:date.value||today(),note:note.value.trim()});
+ save();render();tab('home')
+}
+function del(id){if(confirm('确定删除这笔账目？')){txs=txs.filter(x=>x.id!==id);save();render()}}
+function monthData(){let m=today().slice(0,7);return txs.filter(x=>x.date.startsWith(m))}
+function render(){
+ let totalIn=txs.filter(x=>x.type==='in').reduce((a,x)=>a+x.amount,0), totalOut=txs.filter(x=>x.type==='out').reduce((a,x)=>a+x.amount,0);
+ document.getElementById('balance').textContent=money(totalIn-totalOut);
+ let md=monthData(), mi=md.filter(x=>x.type==='in').reduce((a,x)=>a+x.amount,0), mo=md.filter(x=>x.type==='out').reduce((a,x)=>a+x.amount,0);
+ monthIn.textContent=money(mi);monthOut.textContent=money(mo);rIn.textContent=money(mi);rOut.textContent=money(mo);rNet.textContent=money(mi-mo);
+ const recent=document.getElementById('recent'); recent.innerHTML=txs.slice(0,6).map(row).join('')||'<div class="empty">还没有账目<br><small>先记录第一笔进账或出账吧</small></div>';
+ let q=(search.value||'').toLowerCase(), f=filter.value;
+ let arr=txs.filter(x=>(f==='all'||x.type===f)&&JSON.stringify(x).toLowerCase().includes(q));
+ document.getElementById('list').innerHTML=arr.map(row).join('')||'<div class="empty">没有找到记录</div>';
+}
+function row(x){return `<div class="tx"><div><div class="txname">${x.type==='in'?'🟢':'🔴'} ${esc(x.item)}</div><div class="meta">${x.date} · ${esc(x.category)} · ${esc(x.method)}${x.note?' · '+esc(x.note):''}</div></div><div style="text-align:right"><div class="amt ${x.type==='in'?'in':'out'}">${x.type==='in'?'+':'-'}${money(x.amount)}</div><button class="delete" onclick="del(${x.id})">删除</button></div></div>`}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function tab(id){['home','form','transactions','report'].forEach(x=>document.getElementById(x).classList.toggle('hidden',x!==id));['home','transactions','report'].forEach(x=>document.getElementById('n-'+x).classList.toggle('active',x===id));if(id==='transactions')render()}
+function exportCSV(){let csv='Date,Type,Item,Category,Amount,Payment,Note\\n'+txs.map(x=>`${x.date},${x.type},\"${x.item.replaceAll('"','""')}\",${x.category},${x.amount},${x.method},\"${x.note.replaceAll('"','""')}\"`).join('\\n');let a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\\ufeff'+csv],{type:'text/csv'}));a.download='cashbook.csv';a.click()}
+function clearAll(){if(confirm('确定清空全部账目？此操作不能恢复。')){txs=[];save();render()}}
+date.value=today();render();
+</script>
+</body>
+</html>
