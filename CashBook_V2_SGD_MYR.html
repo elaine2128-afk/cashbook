@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>CashBook V2 · SGD MYR</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f4f6;color:#111827;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.app{max-width:520px;margin:auto;padding:16px 14px 90px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+h1{font-size:24px;margin:0}.badge{font-size:12px;background:#e5e7eb;padding:6px 9px;border-radius:20px}
+.card{background:#fff;border-radius:18px;padding:16px;margin:10px 0;box-shadow:0 2px 10px #0000000a}.balance{font-size:30px;font-weight:800}
+.muted{color:#6b7280;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.money{font-size:21px;font-weight:750;margin-top:5px}
+button,input,select{font:inherit}button{border:0;border-radius:12px;padding:12px 14px;font-weight:700}
+.primary{background:#111827;color:white}.income{background:#dcfce7;color:#166534}.expense{background:#fee2e2;color:#991b1b}.secondary{background:#eef2ff;color:#3730a3}.danger{background:#fff1f2;color:#be123c}
+.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}.field{margin:10px 0}.field label{display:block;font-size:13px;color:#4b5563;margin-bottom:5px}
+input,select{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:11px;background:#fff}
+.tabs{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e7eb;padding:8px max(10px,calc((100% - 500px)/2));display:grid;grid-template-columns:repeat(4,1fr);z-index:5}
+.tabs button{background:transparent;padding:8px 2px;font-size:12px;color:#6b7280}.tabs button.active{color:#111827}
+.section{display:none}.section.active{display:block}.tx{display:flex;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid #eee}.tx:last-child{border:0}.tx .amt{font-weight:750;white-space:nowrap}
+.ratebox{background:#eff6ff;border:1px solid #bfdbfe}.big{font-size:18px;font-weight:800}.smallbtn{padding:7px 9px;font-size:12px}.empty{text-align:center;color:#9ca3af;padding:25px}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="top"><h1>💰 CashBook</h1><span class="badge">V2 · SGD / MYR</span></div>
+
+<section id="home" class="section active">
+<div class="card"><div class="muted">总资产（按 SGD 换算）</div><div class="balance" id="totalSGD">S$0.00</div><div class="muted" id="totalMYR">≈ RM0.00</div></div>
+<div class="grid">
+<div class="card"><div class="muted">🇸🇬 SGD 余额</div><div class="money" id="sgdBal">S$0.00</div></div>
+<div class="card"><div class="muted">🇲🇾 MYR 余额</div><div class="money" id="myrBal">RM0.00</div></div>
+</div>
+<div class="card ratebox"><div class="muted">当前自定义汇率</div><div class="big">1 SGD = <span id="rateShow">3.1900</span> MYR</div><div class="muted">每笔交易会锁定当时使用的汇率</div></div>
+<div class="grid"><button class="income" onclick="openForm('income')">＋ 进账</button><button class="expense" onclick="openForm('expense')">－ 出账</button></div>
+<div class="card"><div class="muted">本月（折算 SGD）</div><div class="row" style="margin-top:8px"><div>进账<br><b id="monthIn">S$0.00</b></div><div>出账<br><b id="monthOut">S$0.00</b></div></div></div>
+</section>
+
+<section id="add" class="section">
+<div class="card"><h2 id="formTitle">新增进账</h2>
+<div class="field"><label>类型</label><select id="type"><option value="income">🟢 进账</option><option value="expense">🔴 出账</option></select></div>
+<div class="field"><label>币种</label><select id="currency" onchange="updateConversion()"><option value="SGD">🇸🇬 SGD 新币</option><option value="MYR">🇲🇾 MYR 马币</option></select></div>
+<div class="field"><label>金额</label><input id="amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" oninput="updateConversion()"></div>
+<div class="field"><label>这笔账使用的汇率（可自己调）</label><input id="txRate" type="number" inputmode="decimal" step="0.0001" oninput="updateConversion()"></div>
+<div class="card" style="margin:8px 0;background:#f9fafb"><span class="muted">换算结果</span><div class="big" id="conversion">—</div></div>
+<div class="field"><label>分类</label><select id="category"><option>工资</option><option>餐饮</option><option>交通</option><option>孩子</option><option>购物</option><option>房租/住宿</option><option>保险</option><option>账单</option><option>换汇</option><option>其他</option></select></div>
+<div class="field"><label>备注</label><input id="note" placeholder="例如：午餐、孩子补习费"></div>
+<div class="field"><label>日期</label><input id="date" type="date"></div>
+<div class="row"><button class="secondary" onclick="resetForm()">取消</button><button class="primary" onclick="saveTx()">保存账目</button></div>
+</div></section>
+
+<section id="list" class="section"><div class="card"><h2>📋 账目</h2><input id="search" placeholder="搜索分类 / 备注 / 金额" oninput="renderList()"><div id="txList"></div></div></section>
+
+<section id="settings" class="section">
+<div class="card"><h2>⚙️ 设置</h2><div class="field"><label>默认汇率</label><div class="row"><input id="defaultRate" type="number" step="0.0001"><button class="primary" onclick="saveRate()">保存汇率</button></div></div><div class="muted">例如 3.18 = 1 SGD 换 RM3.18。新账目自动使用这个汇率，也可单独修改。</div></div>
+<div class="card"><h3>💱 快速换算</h3><div class="field"><label>方向</label><select id="convDir" onchange="quickConvert()"><option value="SGD_MYR">SGD → MYR</option><option value="MYR_SGD">MYR → SGD</option></select></div><div class="field"><label>金额</label><input id="convAmt" type="number" step="0.01" oninput="quickConvert()"></div><div class="big" id="quickResult">—</div></div>
+<div class="card"><h3>💾 数据备份</h3><div class="row"><button class="secondary" onclick="exportData()">导出备份</button><button class="danger" onclick="clearData()">清空全部</button></div><div class="muted" style="margin-top:8px">数据保存在手机浏览器本机。升级网页不会自动删除现有账目。</div></div>
+</section>
+</div>
+
+<div class="tabs"><button class="active" onclick="show('home',this)">🏠<br>首页</button><button onclick="show('add',this)">➕<br>记账</button><button onclick="show('list',this)">📋<br>账目</button><button onclick="show('settings',this)">⚙️<br>设置</button></div>
+
+<script>
+const KEY='cashbook_v2_transactions',RATE='cashbook_v2_rate';
+let txs=JSON.parse(localStorage.getItem(KEY)||'[]');
+let rate=parseFloat(localStorage.getItem(RATE)||'3.19');
+const $=id=>document.getElementById(id);
+function money(n,c){return(c==='SGD'?'S$':'RM')+Number(n||0).toFixed(2)}
+function show(id,btn){document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));$(id).classList.add('active');document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));if(btn)btn.classList.add('active');if(id==='list')renderList();render()}
+function openForm(type){show('add',document.querySelectorAll('.tabs button')[1]);$('type').value=type;$('formTitle').textContent=type==='income'?'新增进账':'新增出账';resetForm(false);$('type').value=type;$('formTitle').textContent=type==='income'?'新增进账':'新增出账'}
+function resetForm(go=true){$('amount').value='';$('note').value='';$('date').value=new Date().toISOString().slice(0,10);$('txRate').value=rate;$('currency').value='SGD';updateConversion();if(go)show('home',document.querySelector('.tabs button'))}
+function updateConversion(){let a=parseFloat($('amount').value)||0,r=parseFloat($('txRate').value)||rate,c=$('currency').value;$('conversion').textContent=c==='SGD'?`${money(a,'SGD')} ≈ ${money(a*r,'MYR')}`:`${money(a,'MYR')} ≈ ${money(a/r,'SGD')}`}
+function saveTx(){let a=parseFloat($('amount').value),c=$('currency').value;if(!a||a<=0)return alert('请输入金额');let r=parseFloat($('txRate').value)||rate;txs.unshift({id:Date.now(),type:$('type').value,currency:c,amount:a,rate:r,category:$('category').value,note:$('note').value,date:$('date').value});localStorage.setItem(KEY,JSON.stringify(txs));resetForm();alert('已保存 ✅')}
+function balances(){let s=0,m=0;txs.forEach(t=>{let sign=t.type==='income'?1:-1;if(t.currency==='SGD')s+=sign*t.amount;else m+=sign*t.amount});return{s,m}}
+function render(){let b=balances();$('sgdBal').textContent=money(b.s,'SGD');$('myrBal').textContent=money(b.m,'MYR');$('totalSGD').textContent=money(b.s+b.m/rate,'SGD');$('totalMYR').textContent='≈ '+money(b.s*rate+b.m,'MYR');$('rateShow').textContent=rate.toFixed(4);$('defaultRate').value=rate.toFixed(4);let ym=new Date().toISOString().slice(0,7),mi=0,mo=0;txs.filter(t=>t.date?.startsWith(ym)).forEach(t=>{let v=t.currency==='SGD'?t.amount:t.amount/rate;if(t.type==='income')mi+=v;else mo+=v});$('monthIn').textContent=money(mi,'SGD');$('monthOut').textContent=money(mo,'SGD')}
+function renderList(){let q=($('search').value||'').toLowerCase();let arr=txs.filter(t=>JSON.stringify(t).toLowerCase().includes(q));$('txList').innerHTML=arr.length?arr.map(t=>`<div class="tx"><div><b>${t.type==='income'?'🟢':'🔴'} ${t.category}</b><div class="muted">${t.date||''} · ${t.note||''}<br>汇率 1 SGD = ${Number(t.rate).toFixed(4)} MYR</div></div><div class="amt">${t.type==='income'?'+':'-'}${money(t.amount,t.currency)}<br><button class="smallbtn danger" onclick="delTx(${t.id})">删除</button></div></div>`).join(''):'<div class="empty">还没有账目</div>'}
+function delTx(id){if(confirm('确定删除这笔账目吗？')){txs=txs.filter(t=>t.id!==id);localStorage.setItem(KEY,JSON.stringify(txs));render();renderList()}}
+function saveRate(){let r=parseFloat($('defaultRate').value);if(!r||r<=0)return alert('请输入正确汇率');rate=r;localStorage.setItem(RATE,rate);render();alert('默认汇率已更新 ✅')}
+function quickConvert(){let a=parseFloat($('convAmt').value)||0;if($('convDir').value==='SGD_MYR')$('quickResult').textContent=money(a,'SGD')+' = '+money(a*rate,'MYR');else $('quickResult').textContent=money(a,'MYR')+' = '+money(a/rate,'SGD')}
+function exportData(){let blob=new Blob([JSON.stringify({rate,transactions:txs},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='CashBook-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function clearData(){if(confirm('确定清空全部账目？此操作不能恢复。')){txs=[];localStorage.setItem(KEY,'[]');render();renderList()}}
+$('date').value=new Date().toISOString().slice(0,10);$('txRate').value=rate;render();updateConversion();
+</script>
+</body></html>
