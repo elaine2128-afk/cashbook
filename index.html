@@ -275,6 +275,7 @@ function go(page){
 }
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>go(b.dataset.page));
 document.querySelectorAll('[data-group="type"]').forEach(b=>b.onclick=()=>setChoice('type',b.dataset.value));
+document.querySelectorAll('[data-group="currency"]').forEach(b=>b.onclick=()=>setChoice('currency',b.dataset.value));
 
 function setType(v){state.type=v;document.querySelectorAll('[data-group="type"]').forEach(b=>b.classList.toggle('active',b.dataset.value===v));$('selType').textContent=v==='income'?'收入':'支出'}
 function setChoice(group,v){
