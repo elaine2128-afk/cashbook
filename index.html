@@ -255,7 +255,7 @@ input{width:100%;border:1px solid #dfc7d1;border-radius:11px;padding:11px;backgr
   <input id="monthlyReportMonth" class="reportPickerInput" type="month" aria-label="月报月份">
  </label>
 </div>
-<div class="reportButtons"><button class="reportButton" onclick="printReport('daily')">🧾 每日报表 · 80mm<br><span class="small">按上面的日期打印</span></button><button class="reportButton" onclick="printReport('monthly')">📆 每月报表 · A4<br><span class="small">1–31日顺序出账</span></button></div>
+<div class="reportButtons"><button class="reportButton" onclick="printReport('daily')">🧾 每日报表 · 80mm<br><span class="small">按上面的日期打印</span></button><button class="reportButton" onclick="printReport('monthly')">📆 每月报表 · A4<br><span class="small">按日期顺序显示有出账的日期</span></button></div>
 </div>
 <div class="card"><div class="sectionTitle">📊 本月分类统计</div><div id="categoryStats"></div></div>
 </section>
@@ -314,7 +314,7 @@ let fromId='uob',toId='cash-myr';
 function $(id){return document.getElementById(id)}
 function money(n,c){return (c==='MYR'?'RM ':'S$')+Number(n||0).toFixed(2)}
 function toSGD(x){return x.currency==='MYR'?Number(x.amount)/Number(x.rate||rate):Number(x.amount)}
-function today(){return new Date().toISOString().slice(0,10)}
+function today(){const d=new Date();const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,'0');const day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`}
 function formatDateCN(v){
  if(!v)return '点这里选择日期';
  const p=v.split('-'); return `${p[0]}年${Number(p[1])}月${Number(p[2])}日`;
@@ -463,6 +463,73 @@ function saveEditedTx(){const x=tx.find(q=>String(q.id)===String(editingTxId));c
 function cashbookDeleteTap(btn){const idx=Number(btn&&btn.dataset?btn.dataset.deleteIndex:-1);if(idx<0||!tx[idx])return false;window.cashbookDeleteIndex=idx;$('deleteModalText').textContent=`${tx[idx].date||''} · ${tx[idx].type==='income'?'收入':'支出'} · ${money(tx[idx].amount,tx[idx].currency)}`;$('deleteModal').classList.add('show');$('deleteModal').setAttribute('aria-hidden','false');return false;}
 function cashbookCloseDelete(){if($('deleteModal')){$('deleteModal').classList.remove('show');$('deleteModal').setAttribute('aria-hidden','true')}window.cashbookDeleteIndex=-1;}
 function cashbookConfirmDelete(){const idx=Number(window.cashbookDeleteIndex);if(idx<0||!tx[idx])return false;tx.splice(idx,1);localStorage.setItem(KEY,JSON.stringify(tx));cashbookCloseDelete();renderHome();renderWallets();renderReports();return false;}
+function allAssets(){
+ let SGD=0,MYR=0;
+ wallets.forEach(w=>{
+  if(w.liability)return;
+  const b=walletBalance(w);
+  if(w.currency==='SGD')SGD+=b; else MYR+=b;
+ });
+ return {SGD,MYR};
+}
+function updateExchangePreview(){
+ const from=wallets.find(w=>w.id===fromId), to=wallets.find(w=>w.id===toId);
+ const amount=Number($('exAmount')?.value||0), r=Number($('exRate')?.value||rate||3.19);
+ if(!from||!to||!amount||amount<=0||!r){$('exPreview').textContent='—';return;}
+ let out=amount;
+ if(from.currency==='SGD' && to.currency==='MYR') out=amount*r;
+ else if(from.currency==='MYR' && to.currency==='SGD') out=amount/r;
+ $('exPreview').textContent=`${money(amount,from.currency)} → ${money(out,to.currency)}`;
+}
+function renderExchange(){
+ const usable=wallets.filter(w=>!w.liability);
+ const renderWalletChoices=(target,current)=>{
+  const box=$(target); if(!box)return;
+  box.innerHTML=usable.map(w=>`<button type="button" class="choice ${current===w.id?'active':''}" data-id="${w.id}">${walletLogo(w)}<span>${w.label}</span></button>`).join('');
+  box.querySelectorAll('button').forEach(b=>b.onclick=()=>{if(target==='fromWallet')fromId=b.dataset.id;else toId=b.dataset.id;renderExchange();updateExchangePreview();});
+ };
+ renderWalletChoices('fromWallet',fromId); renderWalletChoices('toWallet',toId);
+ if($('exRate'))$('exRate').value=rate;
+ if($('exDate')&&!$('exDate').value)$('exDate').value=today();
+ updateExchangePreview();
+ const list=$('exchangeList');
+ if(list){
+  const ex=tx.filter(x=>x.kind==='ex').slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.id||0)-Number(a.id||0));
+  list.innerHTML=ex.length?ex.map(x=>{const f=wallets.find(w=>w.id===x.fromId),t=wallets.find(w=>w.id===x.toId);return `<tr><td>${x.date}</td><td>${f?.label||x.fromId}</td><td>${t?.label||x.toId}</td><td>${money(x.fromAmount,x.fromCurrency)} → ${money(x.toAmount,x.toCurrency)}</td><td>${Number(x.rate||0).toFixed(4)}</td><td>${x.note||''}</td><td><button type="button" class="deleteBtn" onclick="deleteExchangeById('${x.id}')">🗑️ 删除</button></td></tr>`}).join(''):'<tr><td colspan="7">还没有换汇记录</td></tr>';
+ }
+}
+function saveExchange(){
+ const from=wallets.find(w=>w.id===fromId),to=wallets.find(w=>w.id===toId);
+ const amount=Number($('exAmount')?.value||0),r=Number($('exRate')?.value||0);
+ if(!from||!to)return alert('请选择换出和换入钱包');
+ if(from.id===to.id)return alert('换出和换入钱包不能相同');
+ if(!amount||amount<=0)return alert('请输入正确的换出金额');
+ if(!r||r<=0)return alert('请输入正确汇率');
+ let toAmount=amount;
+ if(from.currency==='SGD'&&to.currency==='MYR')toAmount=amount*r;
+ else if(from.currency==='MYR'&&to.currency==='SGD')toAmount=amount/r;
+ const item={id:Date.now(),kind:'ex',date:$('exDate')?.value||today(),fromId:from.id,toId:to.id,fromAmount:amount,fromCurrency:from.currency,toAmount,toCurrency:to.currency,rate:r,note:$('exNote')?.value.trim()||''};
+ tx.unshift(item);localStorage.setItem(KEY,JSON.stringify(tx));
+ $('exAmount').value='';$('exNote').value='';
+ alert('换汇已保存 ✅');renderExchange();renderHome();renderWallets();renderReports();
+}
+function deleteExchangeById(id){
+ const idx=tx.findIndex(x=>String(x.id)===String(id)&&x.kind==='ex');
+ if(idx<0)return;
+ if(!confirm('确定删除这笔换汇记录吗？'))return;
+ tx.splice(idx,1);localStorage.setItem(KEY,JSON.stringify(tx));renderExchange();renderHome();renderWallets();renderReports();
+}
+function categorySummary(items){
+ const map={};
+ items.filter(x=>x.kind==='tx'&&x.type==='expense').forEach(x=>{
+  const k=(x.category||'其他')+(x.sub?' - '+x.sub:'');
+  if(!map[k])map[k]={sgd:0,myr:0,total:0};
+  if(x.currency==='SGD')map[k].sgd+=Number(x.amount||0); else map[k].myr+=Number(x.amount||0);
+  map[k].total+=toSGD(x);
+ });
+ const rows=Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
+ return rows.length?rows.map(([k,v])=>`<tr><td>${k}</td><td>${v.sgd?`S$${v.sgd.toFixed(2)}`:'—'}</td><td>${v.myr?`RM${v.myr.toFixed(2)}`:'—'}</td><td>S$${v.total.toFixed(2)}</td></tr>`).join(''):'<tr><td colspan="4">暂无支出</td></tr>';
+}
 function renderHome(){
  const a=allAssets();$('homeSGD').textContent=money(a.SGD,'SGD');$('homeMYR').textContent=money(a.MYR,'MYR');
  const ym=today().slice(0,7),m=tx.filter(x=>x.kind==='tx'&&x.date.startsWith(ym));
@@ -547,7 +614,7 @@ function printReport(mode){
 
  const rows=sortedItems.map((x,i)=>`<tr><td>${i+1}</td><td>${x.date}</td><td>${x.type==='income'?'收入':'支出'}</td><td>${x.category}${x.sub?' - '+x.sub:''}</td><td>${x.payment}</td><td>${money(x.amount,x.currency)}</td><td>S$${toSGD(x).toFixed(2)}</td><td>${x.note||''}</td></tr>`).join('');
  const exrows=exchanges.slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')) || Number(a.id||0)-Number(b.id||0)).map((x,i)=>{const f=wallets.find(w=>w.id===x.fromId),tgt=wallets.find(w=>w.id===x.toId);return `<tr><td>${i+1}</td><td>${x.date}</td><td>${f?.label||x.fromId}</td><td>${tgt?.label||x.toId}</td><td>${money(x.fromAmount,x.fromCurrency)}</td><td>${money(x.toAmount,x.toCurrency)}</td><td>${Number(x.rate).toFixed(4)}</td></tr>`}).join('');
- const days=Array.from({length:31},(_,i)=>i+1).map(day=>{
+ const days=Array.from(new Set(items.filter(x=>x.type==='expense').map(x=>Number(String(x.date||'').slice(8,10)))).filter(Boolean)).sort((a,b)=>a-b).map(day=>{
    const ds=`${selectedMonth}-${String(day).padStart(2,'0')}`;
    const dayItems=items.filter(x=>x.date===ds&&x.type==='expense');
    const sg=dayItems.filter(x=>x.currency==='SGD').reduce((n,x)=>n+Number(x.amount||0),0);
@@ -556,7 +623,7 @@ function printReport(mode){
    return `<tr><td>${day}</td><td>${sg?`S$${sg.toFixed(2)}`:'—'}</td><td>${my?`RM${my.toFixed(2)}`:'—'}</td><td>${sgd?`S$${sgd.toFixed(2)}`:'—'}</td></tr>`;
  }).join('');
  const css=`body{font-family:Arial,'Microsoft YaHei',sans-serif;color:#29232a;margin:0}.wrap{max-width:1050px;margin:auto;padding:18px}.head{display:flex;align-items:center;gap:8px;border:2px solid #f2c2d2;border-radius:18px;padding:12px;background:#fff0f5}.head img{width:78px;height:58px;object-fit:cover;border-radius:14px}.title{font-size:22px;color:#c83f72;font-weight:900}.name{font-size:15px;font-weight:800}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.card{border:1px solid #edc3d1;border-radius:9px;padding:9px;background:#fff9fb}.card b{font-size:12px}table{width:100%;border-collapse:collapse;font-size:9px;margin-top:9px}th,td{border:1px solid #e5cdd6;padding:5px}th{background:#ffe1eb}.dayTable th{background:#ffd8e6}.dayTable td:first-child{text-align:center;font-weight:900}.footer{text-align:center;color:#c5577d;margin-top:14px}.muted{color:#8b737c}@page{size:A4;margin:10mm}`;
- const doc=`<!doctype html><html><head><meta charset="utf-8"><title>CashBook monthly · ${selectedMonth}</title><style>${css}</style></head><body><div class="wrap"><div class="head"><img src="${LOGO}"><div><div class="title">💗 CASHBOOK</div><div class="name">${owner}</div><div>Monthly Report / 月度报表 · ${selectedMonth}</div></div></div><div class="cards"><div class="card"><b>🇸🇬 SGD 原币</b><br>收入 +S$${sIn.toFixed(2)}<br>支出 -S$${sOut.toFixed(2)}<br><b>净额 S$${(sIn-sOut).toFixed(2)}</b></div><div class="card"><b>🇲🇾 MYR 原币</b><br>收入 +RM${mIn.toFixed(2)}<br>支出 -RM${mOut.toFixed(2)}<br><b>净额 RM${(mIn-mOut).toFixed(2)}</b></div><div class="card"><b>💱 折算 SGD</b><br>收入 S$${cIn.toFixed(2)}<br>支出 S$${cOut.toFixed(2)}<br><b>净额 S$${(cIn-cOut).toFixed(2)}</b></div></div><h3>📅 每日出账 / Daily Outflow · 1–31日</h3><table class="dayTable"><tr><th>日期</th><th>SGD 出账</th><th>MYR 出账</th><th>折算 SGD</th></tr>${days}</table><h3>📊 分类统计 / Category Summary</h3><table><tr><th>分类</th><th>SGD支出</th><th>MYR支出</th><th>折算SGD</th></tr>${categorySummary(items)}</table><h3>📋 交易明细 / Transaction Details</h3><table><tr><th>No.</th><th>日期</th><th>类型</th><th>分类</th><th>付款方式</th><th>原币金额</th><th>折算SGD</th><th>备注</th></tr>${rows||'<tr><td colspan="8">暂无交易</td></tr>'}</table>${exrows?`<h3>💱 换汇记录</h3><table><tr><th>No.</th><th>日期</th><th>从</th><th>到</th><th>换出</th><th>换入</th><th>汇率</th></tr>${exrows}</table>`:''}<div class="footer">♡ Let's Save for a Happier Tomorrow! ♡ · CashBook · ${owner}</div></div><script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script>
+ const doc=`<!doctype html><html><head><meta charset="utf-8"><title>CashBook monthly · ${selectedMonth}</title><style>${css}</style></head><body><div class="wrap"><div class="head"><img src="${LOGO}"><div><div class="title">💗 CASHBOOK</div><div class="name">${owner}</div><div>Monthly Report / 月度报表 · ${selectedMonth}</div></div></div><div class="cards"><div class="card"><b>🇸🇬 SGD 原币</b><br>收入 +S$${sIn.toFixed(2)}<br>支出 -S$${sOut.toFixed(2)}<br><b>净额 S$${(sIn-sOut).toFixed(2)}</b></div><div class="card"><b>🇲🇾 MYR 原币</b><br>收入 +RM${mIn.toFixed(2)}<br>支出 -RM${mOut.toFixed(2)}<br><b>净额 RM${(mIn-mOut).toFixed(2)}</b></div><div class="card"><b>💱 折算 SGD</b><br>收入 S$${cIn.toFixed(2)}<br>支出 S$${cOut.toFixed(2)}<br><b>净额 S$${(cIn-cOut).toFixed(2)}</b></div></div><h3>📅 每日出账 / Daily Outflow · 按日期顺序</h3><table class="dayTable"><tr><th>日期</th><th>SGD 出账</th><th>MYR 出账</th><th>折算 SGD</th></tr>${days}</table><h3>📊 分类统计 / Category Summary</h3><table><tr><th>分类</th><th>SGD支出</th><th>MYR支出</th><th>折算SGD</th></tr>${categorySummary(items)}</table><h3>📋 交易明细 / Transaction Details</h3><table><tr><th>No.</th><th>日期</th><th>类型</th><th>分类</th><th>付款方式</th><th>原币金额</th><th>折算SGD</th><th>备注</th></tr>${rows||'<tr><td colspan="8">暂无交易</td></tr>'}</table>${exrows?`<h3>💱 换汇记录</h3><table><tr><th>No.</th><th>日期</th><th>从</th><th>到</th><th>换出</th><th>换入</th><th>汇率</th></tr>${exrows}</table>`:''}<div class="footer">♡ Let's Save for a Happier Tomorrow! ♡ · CashBook · ${owner}</div></div><script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script>
 <div id="walletDetailModal" class="walletModal" aria-hidden="true">
  <div class="walletModalShade" onclick="closeWalletDetail()"></div>
  <div class="walletModalBox">
